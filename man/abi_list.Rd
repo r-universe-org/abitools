@@ -2,14 +2,25 @@
 % Please edit documentation in R/abi_list.R
 \name{abi_list}
 \alias{abi_list}
+\alias{install_flags}
 \title{ABI imports and exports of a package}
 \usage{
-abi_list(pkg, lib.loc = NULL)
+abi_list(pkg, lib.loc = NULL, flags = NULL)
+
+install_flags(log)
 }
 \arguments{
 \item{pkg}{name of an installed package}
 
 \item{lib.loc}{library to search, defaults to \code{\link[=.libPaths]{.libPaths()}}}
+
+\item{flags}{extra arguments for the compiler when parsing headers, such as
+the include directories of system libraries that the headers need. Use
+\code{\link[=install_flags]{install_flags()}} to take these from the log of \verb{R CMD INSTALL}.}
+
+\item{log}{path to the output of \verb{R CMD INSTALL} for the package (e.g.
+\verb{00install.out}). The \code{-I} flags of its compiler commands that point to
+existing directories are returned.}
 }
 \value{
 a list with data frames \code{exports} and \code{imports}, both with columns

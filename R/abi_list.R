@@ -28,6 +28,9 @@
 #' entries that are easy to store and query in a database.
 #'
 #' @inheritParams abi_deps
+#' @param flags extra arguments for the compiler when parsing headers, such as
+#' the include directories of system libraries that the headers need. Use
+#' [install_flags()] to take these from the log of `R CMD INSTALL`.
 #' @return a list with data frames `exports` and `imports`, both with columns
 #' `key` and `hash`. The key is `<package>::<class>` for an S4 class,
 #' `<package>::<function>()` for a C function, or `<package>/include` for the
@@ -36,22 +39,37 @@
 #' @export
 #' @examples
 #' abi_list("stats4")
-abi_list <- function(pkg, lib.loc = NULL){
-  list(exports = abi_exports(pkg, lib.loc), imports = abi_imports(pkg, lib.loc))
+abi_list <- function(pkg, lib.loc = NULL, flags = NULL){
+  list(exports = abi_exports(pkg, lib.loc, flags), imports = abi_imports(pkg, lib.loc, flags))
 }
 
-abi_exports <- function(pkg, lib.loc = NULL){
+#' @export
+#' @rdname abi_list
+#' @param log path to the output of `R CMD INSTALL` for the package (e.g.
+#' `00install.out`). The `-I` flags of its compiler commands that point to
+#' existing directories are returned.
+install_flags <- function(log){
+  text <- paste(readLines(log, warn = FALSE), collapse = " ")
+  dirs <- regmatches(text, gregexpr("-I\\s*(\"[^\"]*\"|'[^']*'|[^\\s\"']+)", text, perl = TRUE))[[1]]
+  dirs <- gsub("^-I\\s*|[\"']", "", dirs)
+  dirs <- unique(dirs[grepl("^/", dirs) & dir.exists(dirs)])
+  paste0("-I", dirs)
+}
+
+abi_exports <- function(pkg, lib.loc = NULL, flags = NULL){
   path <- find.package(pkg, lib.loc)
   defs <- class_defs(load_rdb(path, pkg), pkg)
   headers <- header_hash(path)
-  functions <- c_function_hashes(pkg, path, lib.loc)
+  functions <- c_function_hashes(pkg, path, lib.loc, flags)
   abi_table(
     key = c(if (length(headers)) paste0(pkg, "/include"), if (length(defs)) paste0(pkg, "::", names(defs)), names(functions)),
     hash = c(headers, vapply(defs, class_hash, "", USE.NAMES = FALSE), unname(functions))
   )
 }
 
-abi_imports <- function(pkg, lib.loc = NULL){
+# The dependencies are parsed with the flags of the package: that is how it
+# saw their headers when it was built.
+abi_imports <- function(pkg, lib.loc = NULL, flags = NULL){
   path <- find.package(pkg, lib.loc)
   deps <- rbind(linkingto_deps(path, lib.loc), s4_deps(load_rdb(path, pkg), pkg, lib.loc))
   deps <- deps[deps$type != "headers", ]
@@ -59,7 +77,7 @@ abi_imports <- function(pkg, lib.loc = NULL){
   out <- abi_table()
   for (dep in unique(deps$package)) {
     rows <- deps[deps$package == dep, ]
-    exports <- abi_exports(dep, lib.loc)
+    exports <- abi_exports(dep, lib.loc, flags)
     wanted <- paste0(dep, "::", rows$detail[rows$type == "S4 class"])
     if ("C API" %in% rows$type) {
       # The C functions of the dependency that the package calls by name

@@ -138,10 +138,20 @@ Each header is parsed as a translation unit by libclang with the arguments:
 -isysroot <SDK path>        (macOS only)
 ```
 
+followed by the extra flags given by the caller (such as the include
+directories of system libraries, taken from the log of `R CMD INSTALL`).
+
 Headers with extension `.hpp`, `.hh`, `.cc`, `.cpp`, or no extension are
-parsed as C++. Other headers are parsed as C, and if that gives errors, as
-C++. A header is only used if it parses without diagnostics of severity error
-or higher.
+parsed as C++. Other headers are parsed as C, and if that gives diagnostics of
+severity error or higher, also as C++. The parse with the fewest errors is
+used; if equal, the one with the most candidate signatures (section 5.4), and
+if still equal, the C parse.
+
+Clang continues after an error (such as a header that is not found) and marks
+the declarations that it could not parse as invalid (e.g. a declaration with
+an unknown type name, which it takes to be `int`). A candidate signature is
+not used if its declaration is invalid, or if its description goes through an
+invalid typedef, record or enum declaration.
 
 The *package directories* are the include directories of the package and of
 its LinkingTo dependencies.

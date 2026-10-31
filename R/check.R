@@ -14,16 +14,16 @@
 #' @param exports data frame with the current exports of the dependencies,
 #' e.g. the combined `exports` of [abi_list()] for each of them. If `NULL`,
 #' they are computed from the installed packages.
-#' @inheritParams abi_deps
+#' @inheritParams abi_list
 #' @return a data frame with the dependency and reason for each change
 #' @export
 #' @rdname check
-abi_check <- function(x, exports = NULL, lib.loc = NULL){
+abi_check <- function(x, exports = NULL, lib.loc = NULL, flags = NULL){
   # jsonlite::fromJSON() turns an empty array into list()
   imports <- abi_table(x$imports$key, x$imports$hash)
   if (is.null(exports)) {
     exports <- lapply(unique(key_package(imports$key)), function(dep){
-      tryCatch(abi_exports(dep, lib.loc), error = function(e) NULL)
+      tryCatch(abi_exports(dep, lib.loc, flags), error = function(e) NULL)
     })
     exports <- do.call(rbind, c(list(abi_table()), exports))
   }

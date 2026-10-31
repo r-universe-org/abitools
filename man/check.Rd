@@ -5,7 +5,7 @@
 \alias{stale_classes}
 \title{Check if a package needs to be rebuilt}
 \usage{
-abi_check(x, exports = NULL, lib.loc = NULL)
+abi_check(x, exports = NULL, lib.loc = NULL, flags = NULL)
 
 stale_classes(pkg, lib.loc = NULL)
 }
@@ -18,6 +18,10 @@ e.g. the combined \code{exports} of \code{\link[=abi_list]{abi_list()}} for each
 they are computed from the installed packages.}
 
 \item{lib.loc}{library to search, defaults to \code{\link[=.libPaths]{.libPaths()}}}
+
+\item{flags}{extra arguments for the compiler when parsing headers, such as
+the include directories of system libraries that the headers need. Use
+\code{\link[=install_flags]{install_flags()}} to take these from the log of \verb{R CMD INSTALL}.}
 
 \item{pkg}{name of an installed package}
 }

@@ -44,7 +44,34 @@ typedef struct {
   int names_only;
   int nvisit;
   char *visit[256];
+  /* the signature uses a declaration that clang could not parse */
+  int invalid;
 } state_t;
+
+/* Clang keeps parsing after an error, e.g. when a header is not found, and
+ * marks the declarations that it had to guess at (an unknown type name is
+ * taken to be int) as invalid. A signature is only used if the declaration
+ * itself, the typedefs that it goes through, and the records and enums that it
+ * describes are all valid. */
+static void check_decl(CXCursor decl, state_t *s){
+  if (clang_isInvalidDeclaration(decl)) s->invalid = 1;
+}
+
+/* Resolve typedefs (checking them) and elaborated types (struct S), such that
+ * the accessors for pointers, arrays and functions can be used on the type */
+static CXType desugar(CXType t, state_t *s){
+  for (;;) {
+    if (t.kind == CXType_Typedef) {
+      CXCursor decl = clang_getTypeDeclaration(t);
+      check_decl(decl, s);
+      t = clang_getTypedefDeclUnderlyingType(decl);
+    } else if (t.kind == CXType_Elaborated) {
+      t = clang_Type_getNamedType(t);
+    } else {
+      return t;
+    }
+  }
+}
 
 static int in_dir(CXCursor cur, const char *dir){
   CXFile file;
@@ -65,6 +92,22 @@ static int in_dirs(CXCursor cur, state_t *s){
 }
 
 static void describe(buf_t *b, CXType t, state_t *s, int depth);
+
+/* A parameter of array or function type is passed as a pointer. libclang
+ * gives the type as written (double x[2]), so decay it here. */
+static void describe_param(buf_t *b, CXType t, state_t *s, int depth){
+  t = desugar(t, s);
+  enum CXTypeKind kind = clang_getCanonicalType(t).kind;
+  if (kind == CXType_ConstantArray || kind == CXType_IncompleteArray || kind == CXType_VariableArray) {
+    put(b, "*");
+    describe(b, clang_getArrayElementType(t), s, depth + 1);
+  } else if (kind == CXType_FunctionProto || kind == CXType_FunctionNoProto) {
+    put(b, "*");
+    describe(b, t, s, depth + 1);
+  } else {
+    describe(b, t, s, depth);
+  }
+}
 
 static enum CXVisitorResult describe_field(CXCursor field, CXClientData data){
   void **args = data;
@@ -132,6 +175,7 @@ static void qualified_name(buf_t *b, CXCursor decl, state_t *s, int depth){
 
 static void describe_record(buf_t *b, CXType t, state_t *s, int depth){
   CXCursor decl = clang_getTypeDeclaration(t);
+  check_decl(decl, s);
   long long size = clang_Type_getSizeOf(t);
   if (size < 0 || depth > 30 || s->names_only || !in_dirs(decl, s)) {
     put(b, "record(");
@@ -159,7 +203,10 @@ static void describe_record(buf_t *b, CXType t, state_t *s, int depth){
 }
 
 static void describe(buf_t *b, CXType t, state_t *s, int depth){
-  t = clang_getCanonicalType(t);
+  t = desugar(t, s);
+  CXType c = clang_getCanonicalType(t);
+  /* Use the type as written where possible, to see the typedefs of the parts */
+  if (t.kind != c.kind) t = c;
   switch (t.kind) {
   case CXType_Pointer:
     put(b, "*");
@@ -188,7 +235,7 @@ static void describe(buf_t *b, CXType t, state_t *s, int depth){
     int n = clang_getNumArgTypes(t);
     for (int i = 0; i < n; i++) {
       if (i) put(b, ",");
-      describe(b, clang_getArgType(t, i), s, depth + 1);
+      describe_param(b, clang_getArgType(t, i), s, depth + 1);
     }
     if (clang_isFunctionTypeVariadic(t)) put(b, n ? ",..." : "...");
     put(b, ")->");
@@ -204,6 +251,7 @@ static void describe(buf_t *b, CXType t, state_t *s, int depth){
     return;
   case CXType_Enum: {
     CXCursor decl = clang_getTypeDeclaration(t);
+    check_decl(decl, s);
     put(b, "enum(");
     describe(b, clang_getEnumDeclIntegerType(decl), s, depth + 1);
     put(b, "|");
@@ -262,6 +310,7 @@ static void describe(buf_t *b, CXType t, state_t *s, int depth){
 static void add_result(state_t *s, const char *name, const char *kind, CXType t){
   for (int i = 0; i < s->nvisit; i++) free(s->visit[i]);
   s->nvisit = 0;
+  s->invalid = 0;
   /* A function pointer (variable or cast) has the signature of the function */
   CXType c = clang_getCanonicalType(t);
   if (c.kind == CXType_Pointer) {
@@ -272,6 +321,10 @@ static void add_result(state_t *s, const char *name, const char *kind, CXType t)
   buf_t b = {NULL, 0, 0};
   put(&b, "");
   describe(&b, t, s, 0);
+  if (s->invalid) {
+    free(b.data);
+    return;
+  }
   if (s->n == s->cap) {
     s->cap = s->cap ? 2 * s->cap : 64;
     s->found = realloc(s->found, s->cap * sizeof(char *));
@@ -355,6 +408,8 @@ static enum CXChildVisitResult visit(CXCursor c, CXCursor parent, CXClientData d
   /* Skip declarations from R, system and C++ library headers */
   if (!in_dir(c, s->own)) return CXChildVisit_Continue;
   enum CXCursorKind kind = clang_getCursorKind(c);
+  /* An invalid declaration can still hold a valid cast in its body */
+  if (clang_isInvalidDeclaration(c)) return CXChildVisit_Recurse;
   if (kind == CXCursor_FunctionDecl || kind == CXCursor_VarDecl) {
     CXType t = clang_getCanonicalType(clang_getCursorType(c));
     int is_function = t.kind == CXType_FunctionProto || t.kind == CXType_FunctionNoProto ||

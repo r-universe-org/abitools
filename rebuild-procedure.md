@@ -7,9 +7,11 @@ system that builds binary packages from source.
 
 ## What to store for each build
 
-Run `abi_list(pkg)` right after the package has been installed in the build
-environment, using the same library that it was built against. It returns the
-ABI exports and imports of the package:
+Run `abi_list(pkg, flags = install_flags("00install.log"))` right after the
+package has been installed in the build environment, using the same library
+that it was built against. The flags are the include directories of system
+libraries from the install log, which some headers need to parse. It returns
+the ABI exports and imports of the package:
 
 - **exports**: the hashes of the S4 classes, C functions, and C headers of
   the package itself. Dependents are compared against these.

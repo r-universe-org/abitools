@@ -143,8 +143,15 @@ different ways in which packages declare a C API: plain declarations (cli,
 xts), macros as return type (nloptr), stub prefixes such as `_fun` (Bioconductor),
 `_pkg_fun` (Rcpp interfaces) or `M_fun` (Matrix), function pointers (libgeos,
 PreciseSums), and casts at call sites (Rcpp, Matrix, RNifti). Functions that
-are not found in the headers are not exported. Set
-`options(abitools.verbose = TRUE)` to see why a header could not be parsed.
+are not found in the headers are not exported.
+
+Headers that include a system library (such as FreeType in systemfonts) only
+parse with its include directory. Pass the `-I` flags that the package was
+built with as `flags`; `install_flags()` takes them from the log of
+`R CMD INSTALL`. Without them, the functions that do not use types from the
+library are still found, as clang keeps parsing after an error, and abitools
+skips only the declarations that were affected. Set
+`options(abitools.verbose = TRUE)` to see the errors.
 
 **Headers:** a hash of all files in the `include` directory, used for
 `linked library` dependencies.
@@ -184,8 +191,9 @@ fingerprints of one platform are enough for a repository (see limitations).
   platform (e.g. a struct with an `#ifdef _WIN32` member) are not detected.
 - C functions that are registered but not found in the headers (e.g. in an
   inactive `#ifdef` branch, or of packages without headers) are not exported.
-  For the C APIs that Bioconductor packages use via `LinkingTo`, all functions
-  that are called are found.
+  A rebuild could not fix a dependent that calls such a function anyway, as
+  it must declare the function itself. For the C APIs that Bioconductor
+  packages use via `LinkingTo`, all functions that are called are found.
 - Calls to `R_GetCCallable()` of a package that is not in `LinkingTo` are not
   imports, on purpose. Such packages declare the functions themselves (e.g.
   dplyr for vctrs, SNPRelate for SeqArray), so a rebuild would not pick up a

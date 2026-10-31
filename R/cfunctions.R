@@ -2,11 +2,11 @@
 # The hash covers the signature of the function as described by libclang (see
 # clang.R and SPEC.md). Functions that are not found in the headers are not
 # exported: a dependent cannot have been compiled against their declaration.
-c_function_hashes <- function(pkg, path, lib.loc = NULL){
+c_function_hashes <- function(pkg, path, lib.loc = NULL, flags = NULL){
   names <- registered_callables(pkg, path, lib.loc)
   if (!length(names))
     return(character())
-  sigs <- clang_signatures(pkg, path, names, lib.loc)
+  sigs <- clang_signatures(pkg, path, names, lib.loc, flags)
   found <- !is.na(sigs)
   hashes <- vapply(sigs[found], hash_text, "", USE.NAMES = FALSE)
   names(hashes) <- paste0(pkg, "::", names[found], "()")

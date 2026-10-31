@@ -40,9 +40,24 @@ test_that("function pointers and casts at call sites are found", {
   expect_equal(unname(sig), c("function(Float64,Int32)->Float64", "function(*Char)->Int32", NA))
 })
 
-test_that("headers that do not parse are not used", {
-  sig <- clang_sig(c("unknown_t broken(int x);", "int fine(int x);"), c("broken", "fine"))
-  expect_equal(unname(sig), c(NA_character_, NA_character_))
+test_that("only the declarations that are affected by a parse error are skipped", {
+  sig <- clang_sig(c(
+    "#include <missing.h>",                     # e.g. a system library that is not installed
+    "typedef unknown_t alias_t;",
+    "typedef struct { unknown_t a; int b; } rec_t;",
+    "unknown_t ret(int x);",
+    "int arg(unknown_t x);",
+    "int via_alias(alias_t *x);",
+    "int via_struct(rec_t *x);",
+    "int fine(int x);",
+    "static inline void init(void){",
+    '  void *f = (void *) (int (*)(rec_t *)) R_GetCCallable("test", "cast");',
+    '  void *g = (void *) (unknown_t (*)(int)) R_GetCCallable("test", "cast_unknown");',
+    '  void *h = (void *) (int (*)(int)) R_GetCCallable("test", "cast_fine");',
+    "  undefined_function(UNDEFINED_MACRO);",
+    "}"
+  ), c("ret", "arg", "via_alias", "via_struct", "fine", "cast", "cast_unknown", "cast_fine"))
+  expect_equal(unname(sig), c(NA, NA, NA, NA, "function(Int32)->Int32", NA, NA, "function(Int32)->Int32"))
 })
 
 test_that("the different ways in which packages declare a C API are found", {
@@ -62,4 +77,16 @@ test_that("the different ways in which packages declare a C API are found", {
 test_that("types from other headers are described by name", {
   sig <- clang_sig(c("#include <stdio.h>", "int write_to(FILE *f, SEXP x);"), "write_to")
   expect_match(sig, "^function\\(\\*record\\([A-Za-z_:]+,[0-9]+\\),\\*record\\(SEXPREC,-2\\)\\)->Int32$")
+})
+
+test_that("the include directories of system libraries are taken from the install log", {
+  log <- tempfile()
+  on.exit(unlink(log))
+  inc <- normalizePath(R.home("include"))
+  writeLines(c(
+    "* installing *source* package 'pkg' ...",
+    sprintf("clang -I\"%s\" -DNDEBUG -I/does/not/exist -I../inst/include -I'%s' -fPIC -c pkg.c -o pkg.o", inc, inc),
+    sprintf("clang -I%s -isystem /usr -c other.c -o other.o", tempdir())
+  ), log)
+  expect_equal(install_flags(log), paste0("-I", c(inc, tempdir())))
 })
