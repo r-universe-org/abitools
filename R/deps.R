@@ -82,7 +82,7 @@ s4_deps <- function(db, pkg, lib.loc){
   # Copies include classes that a package defines with the 'package' argument
   # of setClass() set to another package (scde does this for flexmix)
   for (def in c(class_defs(db, pkg), copies)) {
-    for (ext in def@contains) {
+    for (ext in own_contains(def, pkg, lib.loc)) {
       dep <- super_package(ext)
       if (dep %in% c(pkg, base_packages, "", ".GlobalEnv"))
         next
@@ -101,6 +101,28 @@ s4_dep <- function(dep, class, lib.loc){
   provider <- provider_class(dep, class, lib.loc)
   if (length(provider) && !"oldClass" %in% names(provider@contains))
     deps_table(dep, "S4 class", class)
+}
+
+# The superclasses of a class, without class unions of other packages that it
+# only belongs to because it extends a basic class. E.g. a class that contains
+# "list" also gets NULL_OR_list from SparseArray, if SparseArray happens to be
+# loaded when the package is installed. These say nothing about the class.
+own_contains <- function(def, pkg, lib.loc){
+  packages <- vapply(def@contains, super_package, "")
+  basic <- names(def@contains)[packages %in% base_packages]
+  if (!length(basic))
+    return(def@contains)
+  others <- c(def@className, names(def@contains)[!packages %in% base_packages])
+  keep <- vapply(seq_along(def@contains), function(i){
+    if (packages[i] %in% c(pkg, base_packages, "", ".GlobalEnv"))
+      return(TRUE)
+    union <- provider_class(packages[i], names(def@contains)[i], lib.loc)
+    if (is.null(union))
+      return(TRUE)
+    members <- names(Filter(function(ext) ext@distance == 1, union@subclasses))
+    !any(members %in% basic) || any(members %in% others)
+  }, TRUE)
+  def@contains[keep]
 }
 
 provider_class <- function(dep, class, lib.loc){

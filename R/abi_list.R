@@ -63,7 +63,7 @@ abi_exports <- function(pkg, lib.loc = NULL, flags = NULL){
   functions <- c_function_hashes(pkg, path, lib.loc, flags)
   abi_table(
     key = c(if (length(headers)) paste0(pkg, "/include"), if (length(defs)) paste0(pkg, "::", names(defs)), names(functions)),
-    hash = c(headers, vapply(defs, class_hash, "", USE.NAMES = FALSE), unname(functions))
+    hash = c(headers, vapply(defs, class_hash, "", pkg = pkg, lib.loc = lib.loc, USE.NAMES = FALSE), unname(functions))
   )
 }
 
@@ -107,13 +107,13 @@ key_package <- function(key){
 
 # The slots and fields include the inherited ones, so a change in any of the
 # superclasses also changes the hash of the class.
-class_hash <- function(def){
+class_hash <- function(def, pkg = def@package, lib.loc = NULL){
   slots <- def@slots
   slots <- sprintf("slot %s: %s@%s", names(slots), slots,
                    vapply(slots, function(s) attr(s, "package") %||% "", ""))
   fields <- if (methods::is(def, "refClassRepresentation")) def@fieldClasses
   fields <- sprintf("field %s: %s", names(fields), fields)
-  supers <- vapply(def@contains, function(ext){
+  supers <- vapply(own_contains(def, pkg, lib.loc), function(ext){
     sprintf("contains %s@%s", ext@superClass, super_package(ext))
   }, "")
   hash_text(c(def@className, paste("virtual:", def@virtual), sort(slots, method = "radix"),

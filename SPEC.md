@@ -67,6 +67,15 @@ The slots and fields include the inherited ones, and the superclasses include
 the indirect ones (as stored in the class definition by R). `<package>` is the
 `package` attribute of the slot class or superclass, or empty if it has none.
 
+Superclasses from another package are left out if they are class unions that
+the class only belongs to because it extends a basic class (from a base
+package, such as `list`): the direct members of the union (in the definition
+from its own package) include one of the basic superclasses of the class, but
+not the class itself or any of its other superclasses. R adds these unions,
+e.g. `NULL_OR_list` from SparseArray to every class that contains `list`, if
+their package happens to be loaded when the package is installed. This also
+applies to the imports (section 6).
+
 ## 4. C functions
 
 ### 4.1 Registered functions

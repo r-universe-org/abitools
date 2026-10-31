@@ -52,7 +52,7 @@ stale_classes <- function(pkg, lib.loc = NULL){
   path <- find.package(pkg, lib.loc)
   out <- data.frame(class = character(), package = character(), superclass = character(), reason = character())
   for (def in class_defs(load_rdb(path, pkg), pkg)) {
-    for (ext in def@contains) {
+    for (ext in own_contains(def, pkg, lib.loc)) {
       dep <- super_package(ext)
       if (dep %in% c(pkg, base_packages, "", ".GlobalEnv"))
         next
@@ -62,7 +62,7 @@ stale_classes <- function(pkg, lib.loc = NULL){
         "superclass no longer exists"
       } else if (!slots_match(provider@slots, def@slots)) {
         "slots of superclass changed"
-      } else if (!all(names(provider@contains) %in% names(def@contains))) {
+      } else if (!all(names(own_contains(provider, dep, lib.loc)) %in% names(def@contains))) {
         "superclasses of superclass changed"
       }
       if (length(reason))

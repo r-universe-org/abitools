@@ -174,3 +174,30 @@ test_that("the class hash covers the fields of reference classes", {
   setRefClass("RefDerived", contains = "RefBase", fields = list(y = "character"), where = env)
   expect_false(identical(before, abitools:::class_hash(getClass("RefDerived", where = env))))
 })
+
+test_that("class unions of basic classes from loaded packages are ignored", {
+  skip_on_cran()
+  root <- tempfile()
+  lib <- file.path(root, "lib")
+  dir.create(lib, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE))
+
+  install_pkg(make_pkg(root, "provpkg", "1.0",
+                       code = c('setClassUnion("NULL_OR_list", c("NULL", "list"))', 'helper <- function(x) x'),
+                       namespace = c("import(methods)", "exportClasses(NULL_OR_list)", "export(helper)")), lib)
+  code <- 'setClass("Derived", contains = "list", representation(y = "character"))'
+  # provpkg is loaded when conspkg is installed, so Derived gets NULL_OR_list as superclass
+  install_pkg(make_pkg(root, "conspkg", "1.0", code = code,
+                       namespace = c("import(methods)", "importFrom(provpkg, helper)", "exportClasses(Derived)"),
+                       imports = "provpkg"), lib)
+  install_pkg(make_pkg(root, "cprovpkg", "1.0", code = code,
+                       namespace = c("import(methods)", "exportClasses(Derived)")), lib)
+  with_lib(lib, {
+    db <- abitools:::load_rdb(find.package("conspkg"), "conspkg")
+    expect_true("NULL_OR_list" %in% names(get(".__C__Derived", envir = db)@contains))
+    record <- abi_list("conspkg")
+    expect_equal(nrow(record$imports), 0)
+    expect_equal(record$exports$hash, abi_list("cprovpkg")$exports$hash)
+    expect_equal(nrow(stale_classes("conspkg")), 0)
+  })
+})
