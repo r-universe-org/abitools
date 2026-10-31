@@ -59,11 +59,12 @@ slot is the package itself, with the hash
 hash(<class name>,
     "virtual: TRUE" or "virtual: FALSE",
     sorted lines "slot <name>: <class>@<package>",
+    sorted lines "field <name>: <class>" (reference classes only),
     sorted lines "contains <class>@<package>")
 ```
 
-The slots include the inherited slots, and the superclasses include the
-indirect ones (as stored in the class definition by R). `<package>` is the
+The slots and fields include the inherited ones, and the superclasses include
+the indirect ones (as stored in the class definition by R). `<package>` is the
 `package` attribute of the slot class or superclass, or empty if it has none.
 
 ## 4. C functions
@@ -72,8 +73,9 @@ indirect ones (as stored in the class definition by R). `<package>` is the
 
 A package exports a C function `<name>` if:
 
-1. its shared libraries contain the bytes `R_RegisterCCallable`,
-2. `<name>` is a *string* (section 4.2) in its shared libraries,
+1. a *string* (section 4.2) in its shared libraries ends with
+   `R_RegisterCCallable` (the symbol is `_R_RegisterCCallable` on macOS),
+2. `<name>` is a string in its shared libraries,
 3. `<name>` is a *derived name* of an identifier in its headers: for an
    identifier `w` (a match of `[A-Za-z_][A-Za-z0-9_]*` anywhere in a file in
    the `include` directory), the derived names are `w`, `_w`, `_<package>_w`,
@@ -87,9 +89,12 @@ for which no signature is found are not exported.
 ### 4.2 Strings in shared libraries
 
 A *string* in a shared library is a maximal run of 2 to 128 bytes from
-`[A-Za-z0-9_]` that is followed by a NUL byte. (It is usually also preceded by
-a NUL byte, but not if it is the first string in a section, which may follow
-machine code.)
+`[A-Za-z0-9_.]` that is followed by a NUL byte. These are the string literals
+of the code and the symbol names of the binary. A string is usually also
+preceded by a NUL byte, but not if it is the first string in a section (which
+may follow machine code), or if the linker merged it into the tail of a longer
+string (`IRanges` into `_new_IRanges`). Therefore, names are matched as the
+end of a string where a false match is harmless, and exactly otherwise.
 
 ## 5. Signatures
 
@@ -261,17 +266,16 @@ have.) Classes that were registered with `setOldClass()` (i.e. that extend
 **LinkingTo dependencies.** For each package `P` in the `LinkingTo` field of
 `D`:
 
-- If the shared libraries of `P` contain the bytes `R_RegisterCCallable`, and
-  the shared libraries of `D` contain the bytes of `P` followed by a NUL byte
-  (also as the tail of a longer string: linkers merge the string `IRanges`
-  into `_new_IRanges`), then `P` is a **C API** dependency. `D` imports `P::<name>()` for each C function exported
-  by `P` whose name is a string (section 4.2) in the shared libraries of `D`.
+- If `P` registers C functions (section 4.1, condition 1), and a string in
+  the shared libraries of `D` ends with `P` (the first argument of
+  `R_GetCCallable()`), then `P` is a **C API** dependency. `D` imports
+  `P::<name>()` for each C function exported by `P` whose name is a string in
+  the shared libraries of `D`.
 - Otherwise, if `P` ships a shared library in its `lib` directory (a file
   with extension `.so`, `.dylib` or `.dll`, optionally followed by a version
-  such as `.so.2`) and the shared libraries of `D` contain its file name as a
-  string (followed by NUL, preceded by `/` or by a character that is not in
-  `[A-Za-z0-9._]`), then `P` is a **linked library** dependency, and `D`
-  imports `P/include`.
+  such as `.so.2`) and its file name is a string in the shared libraries of
+  `D` (e.g. from `@rpath/libtbb.dylib`), then `P` is a **linked library**
+  dependency, and `D` imports `P/include`.
 - Otherwise, `D` imports nothing from `P` (header-only or static libraries are
   compiled into the binary of `D`).
 

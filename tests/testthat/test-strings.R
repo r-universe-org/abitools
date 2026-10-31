@@ -1,34 +1,31 @@
-test_that("package names only match as separate C strings", {
+test_that("strings in a binary are runs of name characters followed by NUL", {
   file <- tempfile()
   on.exit(unlink(file))
-  write_bytes <- function(...) writeBin(c(...), file)
   nul <- as.raw(0)
-
-  write_bytes(nul, charToRaw("Rsamtools"), nul)
-  expect_true(abitools:::contains_string(file, "Rsamtools"))
-
-  # The first string of a section may directly follow machine code
-  write_bytes(as.raw(c(0xc0, 0x03, 0x5f, 0xd6)), charToRaw("prov_add"), nul)
-  expect_true(abitools:::contains_string(file, "prov_add"))
-  expect_equal(abitools:::read_strings(file), "prov_add")
-
-  # Part of a longer string
-  write_bytes(nul, charToRaw("libBH"), nul)
-  expect_false(abitools:::contains_string(file, "BH"))
-  write_bytes(nul, charToRaw("BHx"), nul)
-  expect_false(abitools:::contains_string(file, "BH"))
-
-  # Linked libraries are referenced by path, e.g. @rpath/libtbb.dylib
-  write_bytes(charToRaw("@rpath/libtbb.dylib"), nul)
-  expect_true(abitools:::contains_string(file, "libtbb.dylib", after = "/"))
+  writeBin(c(
+    nul, charToRaw("Rsamtools"), nul,
+    # The first string of a section may directly follow machine code
+    as.raw(c(0xc0, 0x03, 0x5f, 0xd6)), charToRaw("prov_add"), nul,
+    # Not followed by NUL, or too short
+    charToRaw("partial"), as.raw(0x80), charToRaw("x"), nul,
+    # Linkers merge "IRanges" into the tail of "_new_IRanges"
+    nul, charToRaw("_new_IRanges"), nul,
+    # Linked libraries are referenced by path, e.g. @rpath/libtbb.dylib
+    charToRaw("@rpath/libtbb.dylib"), nul, charToRaw("libtbb.so.2"), nul
+  ), file)
+  strings <- abitools:::binary_strings(file)
+  expect_setequal(strings, c("Rsamtools", "prov_add", "_new_IRanges", "libtbb.dylib", "libtbb.so.2"))
+  # Package names of C APIs match as the tail of a string, function names exactly
+  expect_true(any(endsWith(strings, "IRanges")))
+  expect_false("IRanges" %in% strings)
+  expect_false(any(endsWith(strings, "Ranges_")))
 })
 
-test_that("package names of C APIs also match as the tail of a string", {
+test_that("strings longer than 128 bytes are skipped, also across buffer boundaries", {
   file <- tempfile()
   on.exit(unlink(file))
-  # Linkers merge "IRanges" into the tail of "_new_IRanges"
-  writeBin(c(as.raw(0), charToRaw("_new_IRanges"), as.raw(0)), file)
-  expect_false(abitools:::contains_string(file, "IRanges"))
-  expect_true(abitools:::contains_string_end(file, "IRanges"))
-  expect_false(abitools:::contains_string_end(file, "Ranges_"))
+  long <- paste(rep("a", 129), collapse = "")
+  bytes <- c(charToRaw(long), as.raw(0), charToRaw("ok"), as.raw(0))
+  writeBin(c(raw(65536 - 10), bytes), file)
+  expect_equal(abitools:::binary_strings(file), "ok")
 })

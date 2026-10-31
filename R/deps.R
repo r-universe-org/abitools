@@ -64,16 +64,14 @@ linkingto_deps <- function(path, lib.loc = NULL){
 linkingto_type <- function(dep, libs, lib.loc){
   dep_path <- tryCatch(find.package(dep, lib.loc), error = function(e) NULL)
   if (length(libs) && length(dep_path)) {
+    strings <- binary_strings(libs)
     # A C API is registered with R_RegisterCCallable() and called through
-    # R_GetCCallable("pkg", "fun"), so the caller contains the package name.
-    # The linker may store it as the tail of a longer string ("_new_IRanges").
-    if (contains_bytes(shared_objects(dep_path), "R_RegisterCCallable") &&
-        contains_string_end(libs, dep))
+    # R_GetCCallable("pkg", "fun"), so the caller contains the package name
+    if (registers_callables(shared_objects(dep_path)) && any(endsWith(strings, dep)))
       return("C API")
-    for (lib in shipped_libraries(dep_path)) {
-      if (contains_string(libs, basename(lib), after = "/"))
-        return("linked library")
-    }
+    # A linked library is referenced by file name, e.g. @rpath/libtbb.dylib
+    if (any(basename(shipped_libraries(dep_path)) %in% strings))
+      return("linked library")
   }
   "headers"
 }

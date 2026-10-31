@@ -54,14 +54,17 @@ callable_variants <- function(name, pkg){
 
 # Parse a header as C, or as C++ if that fails. Returns NULL unless it parses
 # without errors: with errors, clang may substitute 'int' for unknown types.
+# Set options(abitools.verbose = TRUE) to see the errors.
 clang_parse <- function(file, names, config){
   cpp_only <- grepl("\\.(hpp|hh|cc|cpp)$|/[^./]+$", file)
   for (lang in if (cpp_only) "c++" else c("c", "c++")) {
     std <- if (lang == "c++") c("-std=gnu++17", "-DR_NO_REMAP") else "-std=gnu17"
     args <- c("-x", lang, std, config$args)
     res <- .Call(abitools_clang_signatures, file, args, names, config$own, config$dirs)
-    if (length(res) && res[[4]] == 0)
-      return(data.frame(name = res[[1]], kind = res[[2]], sig = res[[3]]))
+    if (length(res) && res$errors == 0)
+      return(data.frame(name = res$name, kind = res$kind, sig = res$sig))
+    if (isTRUE(getOption("abitools.verbose")))
+      message(sprintf("Cannot parse %s as %s:\n%s", file, lang, paste(res$messages, collapse = "\n")))
   }
   NULL
 }

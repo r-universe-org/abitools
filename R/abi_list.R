@@ -87,17 +87,19 @@ key_package <- function(key){
   sub("(::|/).*$", "", key)
 }
 
-# The slots include the inherited ones, so a change in any of the
+# The slots and fields include the inherited ones, so a change in any of the
 # superclasses also changes the hash of the class.
 class_hash <- function(def){
   slots <- def@slots
   slots <- sprintf("slot %s: %s@%s", names(slots), slots,
                    vapply(slots, function(s) attr(s, "package") %||% "", ""))
+  fields <- if (methods::is(def, "refClassRepresentation")) def@fieldClasses
+  fields <- sprintf("field %s: %s", names(fields), fields)
   supers <- vapply(def@contains, function(ext){
     sprintf("contains %s@%s", ext@superClass, super_package(ext))
   }, "")
-  hash_text(c(def@className, paste("virtual:", def@virtual),
-             sort(slots, method = "radix"), sort(supers, method = "radix")))
+  hash_text(c(def@className, paste("virtual:", def@virtual), sort(slots, method = "radix"),
+              sort(fields, method = "radix"), sort(supers, method = "radix")))
 }
 
 header_hash <- function(path){

@@ -20,7 +20,10 @@ abitools computes fingerprints of exactly these parts, to pinpoint which ABIs
 have changed and therefore which dependents need to be rebuilt. The
 **exports** of a package are hashes of the S4 classes, C functions, and C
 headers that it provides. The **imports** of a package are the exports of its
-dependencies that it was built against.
+dependencies that it was built against. Both are read from the installed
+package: the class definitions from its lazy-load database, the names of the
+packages and C functions it calls from the strings in its shared library, and
+the signatures of C functions from its headers, parsed with libclang.
 
 abitools can be used in two ways:
 
@@ -117,16 +120,18 @@ superclasses (including inherited ones) with their packages. A dependent
 imports the classes that it extends.
 
 **C functions:** every function that a package registers with
-`R_RegisterCCallable()`. A dependent imports the functions whose names appear
-as strings in its shared library (the names that it passes to
-`R_GetCCallable()`). The hash describes the signature of the function, as
-parsed from the headers of the package by libclang (with the preprocessor, and
-the include directories of R and of the package's own `LinkingTo`
-dependencies): canonical types of the return value and parameters, and for
-structs defined in these headers their size, alignment and field offsets.
-Names, qualifiers, formatting, and macros do not matter; a changed array size
-from a `#define` or a reordered field does. For example, for
-`S4Vectors::_new_IntAE()`:
+`R_RegisterCCallable()`. R keeps no list of these, so abitools tries the
+identifiers that occur both in the headers and as strings in the shared
+library. A dependent imports the functions whose names appear as strings in
+its shared library (the names that it passes to `R_GetCCallable()`).
+
+The hash describes the signature of the function, as parsed from the headers
+of the package by libclang (with the preprocessor, and the include directories
+of R and of the package's own `LinkingTo` dependencies): the canonical types
+of the return value and parameters, and for structs defined in these headers
+their size, alignment and field offsets. Names, qualifiers, formatting, and
+macros do not matter; a changed array size from a `#define` or a reordered
+field does. For example, for `S4Vectors::_new_IntAE()`:
 
 ```
 function(UInt64,UInt64,Int32)->*{24,8|0:UInt64;64:UInt64;128:*Int32;}
@@ -138,7 +143,8 @@ different ways in which packages declare a C API: plain declarations (cli,
 xts), macros as return type (nloptr), stub prefixes such as `_fun` (Bioconductor),
 `_pkg_fun` (Rcpp interfaces) or `M_fun` (Matrix), function pointers (libgeos,
 PreciseSums), and casts at call sites (Rcpp, Matrix, RNifti). Functions that
-are not found in the headers are not exported.
+are not found in the headers are not exported. Set
+`options(abitools.verbose = TRUE)` to see why a header could not be parsed.
 
 **Headers:** a hash of all files in the `include` directory, used for
 `linked library` dependencies.
@@ -166,14 +172,16 @@ are not found in the headers are not exported.
 
 abitools requires libclang: `apt-get install libclang-dev` (Debian, Ubuntu),
 `dnf install clang-devel` (Fedora), or `brew install llvm` (macOS). Set
-`LLVM_CONFIG` to choose an LLVM installation.
+`LLVM_CONFIG` to choose an LLVM installation. There is no Windows build; the
+fingerprints of one platform are enough for a repository (see limitations).
 
 ## Limitations
 
 - Inspecting a package loads the namespaces that its lazy-load database refers
   to, and the package itself if it registers C functions. Run it in the
   library that the package was built with, and compare results only within
-  the same platform and R version.
+  the same platform and R version. Signatures that only differ on another
+  platform (e.g. a struct with an `#ifdef _WIN32` member) are not detected.
 - C functions that are registered but not found in the headers (e.g. in an
   inactive `#ifdef` branch, or of packages without headers) are not exported.
   For the C APIs that Bioconductor packages use via `LinkingTo`, all functions
@@ -183,7 +191,9 @@ abitools requires libclang: `apt-get install libclang-dev` (Debian, Ubuntu),
   dplyr for vctrs, SNPRelate for SeqArray), so a rebuild would not pick up a
   changed signature: that requires a change in their source. The survey lists
   these packages.
-- The class hash ignores prototypes and validity methods.
+- The class hash ignores prototypes and validity methods, and the methods of
+  reference classes (the inherited methods are copied into the subclass, which
+  `abi_deps()` reports as `copied code`).
 - Code that a package copies from a dependency at install time (e.g.
   `f <- dep:::helper`, ggproto or S7 objects) is reported by `abi_deps()` but
   not hashed. Methods for generics of other packages are registered at load

@@ -48,8 +48,8 @@ copied helper calls internals of the dependency that were removed later, so it
 is left to the periodic rebuilds that the repository does anyway (r-universe
 rebuilds every package at least once a month).
 
-The output from one platform is enough, provided the hashes are identical
-across platforms (not yet verified).
+The output from one platform is enough: the hashes are identical on Linux and
+macOS, except for C++ functions with types from the standard library.
 
 ## After a package is deployed
 

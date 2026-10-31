@@ -22,36 +22,28 @@ abi_check <- function(x, exports = NULL, lib.loc = NULL){
   # jsonlite::fromJSON() turns an empty array into list()
   imports <- abi_table(x$imports$key, x$imports$hash)
   if (is.null(exports)) {
-    exports <- do.call(rbind, c(list(abi_table()), lapply(unique(key_package(imports$key)), function(dep){
+    exports <- lapply(unique(key_package(imports$key)), function(dep){
       tryCatch(abi_exports(dep, lib.loc), error = function(e) NULL)
-    })))
+    })
+    exports <- do.call(rbind, c(list(abi_table()), exports))
   }
   exports <- abi_table(exports$key, exports$hash)
-  out <- data.frame(package = character(), reason = character())
-  for (i in seq_len(nrow(imports))) {
-    key <- imports$key[i]
-    dep <- key_package(key)
-    what <- if (endsWith(key, "()")) {
-      paste("C function", sub("^[^:]*::", "", key))
-    } else if (grepl("::", key, fixed = TRUE)) {
-      paste("S4 class", sub("^[^:]*::", "", key))
-    } else {
-      "C headers"
-    }
-    new <- exports$hash[exports$key == key]
-    reason <- if (!dep %in% key_package(exports$key)) {
-      "dependency not found"
-    } else if (!length(new)) {
-      paste(what, "removed")
-    } else if (!identical(new, imports$hash[i])) {
-      paste(what, "changed")
-    }
-    if (length(reason))
-      out[nrow(out) + 1, ] <- list(dep, reason)
-  }
-  out <- unique(out)
+  package <- key_package(imports$key)
+  current <- exports$hash[match(imports$key, exports$key)]
+  reason <- ifelse(!package %in% key_package(exports$key), "dependency not found",
+            ifelse(is.na(current), paste(key_what(imports$key), "removed"),
+            ifelse(current != imports$hash, paste(key_what(imports$key), "changed"), NA)))
+  out <- data.frame(package = package, reason = as.character(reason))
+  out <- unique(out[!is.na(out$reason), ])
   row.names(out) <- NULL
   out
+}
+
+# What a key refers to, for messages
+key_what <- function(key){
+  name <- sub("^[^:]*::", "", key)
+  ifelse(endsWith(key, "()"), paste("C function", name),
+  ifelse(grepl("::", key, fixed = TRUE), paste("S4 class", name), "C headers"))
 }
 
 #' @export

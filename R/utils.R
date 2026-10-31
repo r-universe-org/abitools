@@ -56,33 +56,3 @@ shared_objects <- function(path){
 shipped_libraries <- function(path){
   list.files(file.path(path, "lib"), pattern = "\\.(so|dylib|dll)(\\.[0-9.]+)?$", recursive = TRUE)
 }
-
-# Check if any of the files contains the string as a separate C string, i.e.
-# followed by NUL and not preceded by another character of a name. Short names
-# also occur by chance in machine code, which is why a C API also requires that
-# the dependency registers C functions.
-contains_string <- function(files, string, after = ""){
-  needle <- c(charToRaw(string), as.raw(0))
-  name_chars <- charToRaw("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._")
-  for (file in files) {
-    bytes <- readBin(file, "raw", file.size(file))
-    for (pos in grepRaw(needle, bytes, fixed = TRUE, all = TRUE)) {
-      if (pos == 1 || !bytes[pos - 1] %in% name_chars || bytes[pos - 1] %in% charToRaw(after))
-        return(TRUE)
-    }
-  }
-  FALSE
-}
-
-# String that is followed by a NUL byte, possibly the tail of a longer string
-contains_string_end <- function(files, string){
-  contains_bytes(files, c(charToRaw(string), as.raw(0)))
-}
-
-contains_bytes <- function(files, string){
-  for (file in files) {
-    if (length(grepRaw(string, readBin(file, "raw", file.size(file)), fixed = TRUE)))
-      return(TRUE)
-  }
-  FALSE
-}

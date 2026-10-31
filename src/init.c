@@ -7,11 +7,13 @@ SEXP abitools_ccallable(SEXP pkg, SEXP name){
   return Rf_ScalarLogical(fun != NULL);
 }
 
+SEXP abitools_strings(SEXP);
 SEXP abitools_clang_resource_dir(void);
 SEXP abitools_clang_signatures(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
   {"abitools_ccallable", (DL_FUNC) &abitools_ccallable, 2},
+  {"abitools_strings", (DL_FUNC) &abitools_strings, 1},
   {"abitools_clang_resource_dir", (DL_FUNC) &abitools_clang_resource_dir, 0},
   {"abitools_clang_signatures", (DL_FUNC) &abitools_clang_signatures, 5},
   {NULL, NULL, 0}

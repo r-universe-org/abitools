@@ -52,7 +52,8 @@ static int in_dir(CXCursor cur, const char *dir){
   if (!file) return 0;
   CXString name = clang_getFileName(file);
   const char *path = clang_getCString(name);
-  int res = path && strncmp(path, dir, strlen(dir)) == 0;
+  size_t n = strlen(dir);
+  int res = path && strncmp(path, dir, n) == 0 && (path[n] == '/' || path[n] == '\\');
   clang_disposeString(name);
   return res;
 }
@@ -417,7 +418,8 @@ SEXP abitools_clang_signatures(SEXP file, SEXP args, SEXP names, SEXP own, SEXP 
     clang_disposeDiagnostic(d);
   }
   clang_visitChildren(clang_getTranslationUnitCursor(tu), visit, &s);
-  SEXP out = PROTECT(Rf_allocVector(VECSXP, 5));
+  const char *fields[] = {"name", "kind", "sig", "errors", "messages", ""};
+  SEXP out = PROTECT(Rf_mkNamed(VECSXP, fields));
   SEXP found = PROTECT(Rf_allocVector(STRSXP, s.n));
   SEXP kind = PROTECT(Rf_allocVector(STRSXP, s.n));
   SEXP sig = PROTECT(Rf_allocVector(STRSXP, s.n));

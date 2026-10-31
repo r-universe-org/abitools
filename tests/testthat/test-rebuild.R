@@ -163,3 +163,14 @@ test_that("superclasses of classes defined for another package are imported", {
     expect_equal(record$imports$key, "provpkg::Base")
   })
 })
+
+test_that("the class hash covers the fields of reference classes", {
+  env <- new.env()
+  setRefClass("RefBase", fields = list(x = "numeric"), where = env)
+  setRefClass("RefDerived", contains = "RefBase", fields = list(y = "character"), where = env)
+  before <- abitools:::class_hash(getClass("RefDerived", where = env))
+  # A new field in the superclass is cached in the subclass
+  setRefClass("RefBase", fields = list(x = "numeric", z = "logical"), where = env)
+  setRefClass("RefDerived", contains = "RefBase", fields = list(y = "character"), where = env)
+  expect_false(identical(before, abitools:::class_hash(getClass("RefDerived", where = env))))
+})
