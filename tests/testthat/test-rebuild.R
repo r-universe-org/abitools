@@ -201,3 +201,29 @@ test_that("class unions of basic classes from loaded packages are ignored", {
     expect_equal(nrow(stale_classes("conspkg")), 0)
   })
 })
+
+test_that("copies of class unions that a class only gets via a basic class are ignored", {
+  skip_on_cran()
+  root <- tempfile()
+  lib <- file.path(root, "lib")
+  dir.create(lib, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE))
+
+  install_pkg(make_pkg(root, "provpkg", "1.0",
+                       code = c('setClassUnion("NULL_OR_list", c("NULL", "list"))', 'helper <- function(x) x'),
+                       namespace = c("import(methods)", "exportClasses(NULL_OR_list)", "export(helper)")), lib)
+  install_pkg(make_pkg(root, "cprovpkg", "1.0", code = 'helper2 <- provpkg::helper',
+                       namespace = c("importFrom(provpkg, helper)", "export(helper2)"), imports = "provpkg"), lib)
+  # provpkg is loaded (via cprovpkg) but not imported: for the subclass of
+  # Derived, R stores a copy of NULL_OR_list with updated subclasses in conspkg
+  install_pkg(make_pkg(root, "conspkg", "1.0",
+                       code = c('setClass("Derived", contains = "list", representation(y = "character"))',
+                                'setClass("Derived2", contains = "Derived")'),
+                       namespace = c("import(methods)", "importFrom(cprovpkg, helper2)", "exportClasses(Derived)"),
+                       imports = "cprovpkg"), lib)
+  with_lib(lib, {
+    db <- abitools:::load_rdb(find.package("conspkg"), "conspkg")
+    expect_true(exists(".__C__NULL_OR_list", envir = db))
+    expect_equal(nrow(abi_list("conspkg")$imports), 0)
+  })
+})

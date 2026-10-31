@@ -89,10 +89,16 @@ s4_deps <- function(db, pkg, lib.loc){
       out <- rbind(out, s4_dep(dep, as.character(ext@superClass), lib.loc))
     }
   }
-  # When loaded, these copies replace the definitions of the other package
+  # When loaded, these copies replace the definitions of the other package.
+  # Skip unions that only have a copy here because a class of the package
+  # extends a basic class that is a member (see own_contains).
+  own <- class_defs(db, pkg)
   for (def in copies) {
-    if (!def@package %in% c(base_packages, "", ".GlobalEnv"))
-      out <- rbind(out, s4_dep(def@package, as.character(def@className), lib.loc))
+    name <- as.character(def@className)
+    holders <- Filter(function(x) name %in% names(x@contains), own)
+    via_basic <- length(holders) && !any(vapply(holders, function(x) name %in% names(own_contains(x, pkg, lib.loc)), TRUE))
+    if (!def@package %in% c(base_packages, "", ".GlobalEnv") && !via_basic)
+      out <- rbind(out, s4_dep(def@package, name, lib.loc))
   }
   unique(out)
 }
