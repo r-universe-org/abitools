@@ -12,11 +12,11 @@
 strings_cache <- new.env(parent = emptyenv())
 
 binary_strings <- function(files){
-  unique(unlist(lapply(files, function(file){
+  unique(as.character(unlist(lapply(files, function(file){
     info <- file.info(file)
     id <- paste(normalizePath(file), info$size, as.numeric(info$mtime))
     strings_cache[[id]] <- strings_cache[[id]] %||% unique(.Call(abitools_strings, file))
-  })))
+  }))))
 }
 
 # Whether a package registers C functions with R_RegisterCCallable(). The

@@ -29,3 +29,9 @@ test_that("strings longer than 128 bytes are skipped, also across buffer boundar
   writeBin(c(raw(65536 - 10), bytes), file)
   expect_equal(abitools:::binary_strings(file), "ok")
 })
+
+test_that("packages without a shared library have no strings", {
+  # A LinkingTo dependency can be header-only, such as cpp11 or BH
+  expect_equal(abitools:::binary_strings(character()), character())
+  expect_false(abitools:::registers_callables(character()))
+})
