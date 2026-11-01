@@ -113,6 +113,9 @@ s4_dep <- function(dep, class, lib.loc){
 # only belongs to because it extends a basic class. E.g. a class that contains
 # "list" also gets NULL_OR_list from SparseArray, if SparseArray happens to be
 # loaded when the package is installed. These say nothing about the class.
+# Unions of packages that are not installed are dropped too: these come from
+# copies in the lazy-load DB of a dependency (e.g. phyloseq has a copy of
+# NULL_OR_list), and are never a real dependency.
 own_contains <- function(def, pkg, lib.loc){
   packages <- vapply(def@contains, super_package, "")
   basic <- names(def@contains)[packages %in% base_packages]
@@ -122,6 +125,8 @@ own_contains <- function(def, pkg, lib.loc){
   keep <- vapply(seq_along(def@contains), function(i){
     if (packages[i] %in% c(pkg, base_packages, "", ".GlobalEnv"))
       return(TRUE)
+    if (!length(find.package(packages[i], lib.loc, quiet = TRUE)))
+      return(FALSE)
     union <- provider_class(packages[i], names(def@contains)[i], lib.loc)
     if (is.null(union))
       return(TRUE)

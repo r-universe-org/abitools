@@ -227,3 +227,36 @@ test_that("copies of class unions that a class only gets via a basic class are i
     expect_equal(nrow(abi_list("conspkg")$imports), 0)
   })
 })
+
+test_that("class unions from copies of packages that are not installed are ignored", {
+  skip_on_cran()
+  root <- tempfile()
+  lib <- file.path(root, "lib")
+  dir.create(lib, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE))
+
+  install_pkg(make_pkg(root, "provpkg", "1.0",
+                       code = c('setClassUnion("NULL_OR_list", c("NULL", "list"))', 'helper <- function(x) x'),
+                       namespace = c("import(methods)", "exportClasses(NULL_OR_list)", "export(helper)")), lib)
+  # conspkg stores a copy of NULL_OR_list, but does not need provpkg to load
+  install_pkg(make_pkg(root, "conspkg", "1.0",
+                       code = c('loadNamespace("provpkg")',
+                                'setClass("Derived", contains = "list", representation(y = "character"))',
+                                'setClass("Derived2", contains = "Derived")', 'helper <- function(x) x'),
+                       namespace = c("import(methods)", "exportClasses(Derived)", "export(helper)")), lib)
+  unlink(file.path(lib, "provpkg"), recursive = TRUE)
+  # Loading conspkg gives Other the union, while its package is not installed
+  code <- 'setClass("Other", contains = "list", representation(z = "character"))'
+  install_pkg(make_pkg(root, "cconspkg", "1.0", code = code,
+                       namespace = c("import(methods)", "importFrom(conspkg, helper)", "exportClasses(Other)"),
+                       imports = "conspkg"), lib)
+  install_pkg(make_pkg(root, "cprovpkg", "1.0", code = code,
+                       namespace = c("import(methods)", "exportClasses(Other)")), lib)
+  with_lib(lib, {
+    db <- abitools:::load_rdb(find.package("conspkg"), "conspkg")
+    expect_true(exists(".__C__NULL_OR_list", envir = db))
+    db <- abitools:::load_rdb(find.package("cconspkg"), "cconspkg")
+    expect_true("NULL_OR_list" %in% names(get(".__C__Other", envir = db)@contains))
+    expect_equal(abi_list("cconspkg")$exports$hash, abi_list("cprovpkg")$exports$hash)
+  })
+})

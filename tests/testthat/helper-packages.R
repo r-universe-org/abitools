@@ -26,7 +26,7 @@ make_pkg <- function(root, name, version, code, namespace, imports = NULL,
 }
 
 install_pkg <- function(dir, lib){
-  for (pkg in c("conspkg", "provpkg", "cconspkg", "cprovpkg")) {
+  for (pkg in c("cconspkg", "conspkg", "cprovpkg", "provpkg")) {
     if (isNamespaceLoaded(pkg)) unloadNamespace(pkg)
     dll <- getLoadedDLLs()[[pkg]]
     if (!is.null(dll)) dyn.unload(dll[["path"]])
