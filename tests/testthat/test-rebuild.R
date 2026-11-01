@@ -1,5 +1,4 @@
 test_that("a version bump without changes does not require a rebuild", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -34,7 +33,6 @@ test_that("a version bump without changes does not require a rebuild", {
 })
 
 test_that("a changed superclass requires a rebuild", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -74,7 +72,6 @@ test_that("empty imports and exports survive a JSON round trip", {
 })
 
 test_that("imports and exports are stored as flat lists in JSON", {
-  skip_on_cran()
   skip_if_not_installed("jsonlite")
   record <- list(
     exports = data.frame(key = "IRanges::Ranges", hash = "5f7f937e"),
@@ -95,7 +92,6 @@ test_that("imports and exports are stored as flat lists in JSON", {
 })
 
 test_that("copies of classes of other packages are not exported", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -118,7 +114,6 @@ test_that("copies of classes of other packages are not exported", {
 })
 
 test_that("copies of classes of other packages are imported", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -145,7 +140,6 @@ test_that("copies of classes of other packages are imported", {
 })
 
 test_that("superclasses of classes defined for another package are imported", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -176,7 +170,6 @@ test_that("the class hash covers the fields of reference classes", {
 })
 
 test_that("class unions of basic classes from loaded packages are ignored", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -203,7 +196,6 @@ test_that("class unions of basic classes from loaded packages are ignored", {
 })
 
 test_that("copies of class unions that a class only gets via a basic class are ignored", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -229,7 +221,6 @@ test_that("copies of class unions that a class only gets via a basic class are i
 })
 
 test_that("class unions from copies of packages that are not installed are ignored", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)
@@ -262,7 +253,6 @@ test_that("class unions from copies of packages that are not installed are ignor
 })
 
 test_that("generics of other packages that a package has methods for are imported", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)

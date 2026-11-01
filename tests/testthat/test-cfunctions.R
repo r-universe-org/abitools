@@ -1,5 +1,4 @@
 test_that("only changes in the C functions that a package calls require a rebuild", {
-  skip_on_cran()
   root <- tempfile()
   lib <- file.path(root, "lib")
   dir.create(lib, recursive = TRUE)

@@ -31,9 +31,12 @@ install_pkg <- function(dir, lib){
     dll <- getLoadedDLLs()[[pkg]]
     if (!is.null(dll)) dyn.unload(dll[["path"]])
   }
+  # R CMD check --as-cran sets _R_CHECK_INSTALL_DEPENDS_, which hides packages
+  # that are not declared dependencies during the install. Some tests load these
+  # on purpose.
   status <- system2(file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-test-load", paste0("--library=", shQuote(lib)), shQuote(dir)),
-    env = paste0("R_LIBS=", shQuote(lib)), stdout = FALSE, stderr = FALSE)
+    env = c(paste0("R_LIBS=", shQuote(lib)), "_R_CHECK_INSTALL_DEPENDS_=false"), stdout = FALSE, stderr = FALSE)
   stopifnot(status == 0)
 }
 
