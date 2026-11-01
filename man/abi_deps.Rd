@@ -38,6 +38,9 @@ it changes, so this is informational only.
 \item \verb{S4 class}: an S4 or reference class in the package extends this class
 from the dependency. The definition of the subclass, including the
 inherited slots, was copied at install time.
+\item \verb{S4 generic}: the package defines methods for this generic of the
+dependency. The methods are stored in a table for the generic of that
+package, and are lost if the generic moves to another package.
 \item \verb{copied code}: objects in the package (such as \code{f <- dep:::g}) contain
 functions or environments of the dependency.
 }

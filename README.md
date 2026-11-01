@@ -3,7 +3,7 @@
 > Fingerprint the ABI of installed R packages
 
 A binary R package can depend on the binary interface (ABI) of its
-dependencies in two ways:
+dependencies in three ways:
 
 - **Cached S4 classes.** The definition of a class that extends a class from
   another package is stored in the lazy-load database at install time,
@@ -11,6 +11,10 @@ dependencies in two ways:
   the stored subclass is inconsistent. The package may also store copies of
   classes of other packages (e.g. class unions it added members to), which
   replace the current definitions when it is loaded.
+- **Methods for S4 generics.** Methods for a generic of another package are
+  stored in a table for the generic of that package. If the generic moves to
+  another package (e.g. `scale` from DelayedArray to BiocGenerics), or drops
+  an argument, the methods are silently lost until the package is rebuilt.
 - **Cross-package C calls.** Packages call C functions of a `LinkingTo`
   dependency through `R_GetCCallable("pkg", "fun")`, compiled against the
   function signatures and struct layouts in its headers (or link to a shared
@@ -18,8 +22,8 @@ dependencies in two ways:
 
 abitools computes fingerprints of exactly these parts, to pinpoint which ABIs
 have changed and therefore which dependents need to be rebuilt. The
-**exports** of a package are hashes of the S4 classes, C functions, and C
-headers that it provides. The **imports** of a package are the exports of its
+**exports** of a package are hashes of the S4 classes, S4 generics, C
+functions, and C headers that it provides. The **imports** of a package are the exports of its
 dependencies that it was built against. Both are read from the installed
 package: the class definitions from its lazy-load database, the names of the
 packages and C functions it calls from the strings in its shared library, and
@@ -56,8 +60,8 @@ abi_list("minqa")
 #> 5   Rcpp::rcpp_set_stack_trace() 33a97ea62b293da6
 ```
 
-Keys are `<package>::<class>` for S4 classes, `<package>::<function>()` for C
-functions, and `<package>/include` for headers. An import is a copy of the
+Keys are `<package>::<class>` for S4 classes, `<package>::generic:<name>` for
+S4 generics, `<package>::<function>()` for C functions, and `<package>/include` for headers. An import is a copy of the
 export it was built against, so both are flat data frames with the same
 columns, which `jsonlite::toJSON()` turns into lists of entries that are easy
 to store and query:
@@ -100,7 +104,7 @@ abi_check(x)
 
 ### Other functions
 
-`abi_deps()` shows why a dependency is critical: `S4 class`, `C API`,
+`abi_deps()` shows why a dependency is critical: `S4 class`, `S4 generic`, `C API`,
 `linked library`, `headers` (header-only or static libraries, compiled into
 the binary, so not critical), or `copied code` (see limitations).
 `stale_classes()` checks the S4 classes of a package in a local library
@@ -118,6 +122,9 @@ and subject to change: hashes may differ between versions of abitools.
 **S4 classes:** the class name, the virtual flag, and the slots and
 superclasses (including inherited ones) with their packages. A dependent
 imports the classes that it extends.
+
+**S4 generics:** the name, the arguments and the arguments to dispatch on. A
+dependent imports the generics of other packages that it defines methods for.
 
 **C functions:** every function that a package registers with
 `R_RegisterCCallable()`. R keeps no list of these, so abitools tries the
@@ -204,5 +211,4 @@ fingerprints of one platform are enough for a repository (see limitations).
   `abi_deps()` reports as `copied code`).
 - Code that a package copies from a dependency at install time (e.g.
   `f <- dep:::helper`, ggproto or S7 objects) is reported by `abi_deps()` but
-  not hashed. Methods for generics of other packages are registered at load
-  time, and are not ABI sensitive.
+  not hashed.

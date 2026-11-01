@@ -39,6 +39,23 @@ class_defs <- function(db, pkg, copies = FALSE){
   Filter(function(def) identical(def@package, pkg) != copies, defs)
 }
 
+# The lazyload db has a methods table ".__T__<generic>:<package>" for each
+# generic that the package defines, or defines methods for. <package> is the
+# package that owned the generic when the package was built.
+method_tables <- function(db){
+  names <- sub("^\\.__T__", "", grep("^\\.__T__", ls(db, all.names = TRUE), value = TRUE))
+  data.frame(generic = sub(":[^:]*$", "", names), package = sub("^.*:", "", names))
+}
+
+# The S4 generics that the package itself defines
+generic_defs <- function(db, pkg){
+  tables <- method_tables(db)
+  names <- tables$generic[tables$package == pkg]
+  defs <- lapply(names, get0, envir = db, inherits = FALSE)
+  names(defs) <- names
+  Filter(function(def) methods::is(def, "genericFunction") && identical(def@package, pkg), defs)
+}
+
 super_package <- function(ext){
   attr(ext@superClass, "package") %||% ""
 }

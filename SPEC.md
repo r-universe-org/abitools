@@ -7,7 +7,8 @@ implementations. It describes format version 1.
 ## 1. Overview
 
 The **exports** of a package are hashes of the parts that dependents may copy
-when they are built: S4 class definitions, C functions, and C headers. The
+when they are built: S4 class definitions, S4 generics, C functions, and C
+headers. The
 **imports** of a package are the exports of its dependencies that it copied,
 with the hashes at the time it was built. A package needs to be rebuilt when
 one of its imports no longer matches the current export of the dependency
@@ -19,6 +20,7 @@ is hashed:
 | key                    | what                                    |
 |------------------------|-----------------------------------------|
 | `<package>::<class>`   | an S4 class (section 3)                 |
+| `<package>::generic:<name>` | an S4 generic (section 3.1)        |
 | `<package>::<name>()`  | a registered C function (section 4)     |
 | `<package>/include`    | all files in the `include` directory (section 2) |
 
@@ -78,6 +80,24 @@ that extends a basic class, unions from packages that are not installed are left
 out too: R also gets these from copies in the lazy-load database of a loaded
 dependency (e.g. phyloseq has a copy of `NULL_OR_list`). This also applies to
 the imports (section 6).
+
+### 3.1 S4 generics
+
+The lazy-load database of a package has a methods table named
+`.__T__<generic>:<package>` for each generic that it defines or defines
+methods for, where `<package>` is the package of the generic when the package
+was built. A package exports each generic `<name>` for which it has a table
+`.__T__<name>:<package itself>` and an object `<name>` that is a generic
+function whose `package` slot is the package itself, with the hash
+
+```
+hash(<name>,
+    "arguments: " + the names of its formal arguments, joined with ", ",
+    "signature: " + the arguments to dispatch on, joined with ", ")
+```
+
+Methods of other packages break if the generic moves to another package, or
+drops an argument that the methods were matched to when they were built.
 
 ## 4. C functions
 
@@ -284,6 +304,12 @@ gives `P`), and the superclasses of the copy as above. (A copy can also be a
 class that `D` defines with `setClass(..., package = "P")`, which `P` does not
 have.) Classes that were registered with `setOldClass()` (i.e. that extend
 `oldClass`) are excluded.
+
+**S4 generics.** For each methods table `.__T__<name>:<P>` of `D` with `P`
+another package (not `D` itself, not a base package), `D` imports
+`P::generic:<name>` if `P` exports that generic. Methods for implicit generics
+(made from a function that is not a generic in its own package) are not
+imported.
 
 **LinkingTo dependencies.** For each package `P` in the `LinkingTo` field of
 `D`:

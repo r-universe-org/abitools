@@ -19,6 +19,9 @@
 #'  - `S4 class`: an S4 or reference class in the package extends this class
 #'    from the dependency. The definition of the subclass, including the
 #'    inherited slots, was copied at install time.
+#'  - `S4 generic`: the package defines methods for this generic of the
+#'    dependency. The methods are stored in a table for the generic of that
+#'    package, and are lost if the generic moves to another package.
 #'  - `copied code`: objects in the package (such as `f <- dep:::g`) contain
 #'    functions or environments of the dependency.
 #'
@@ -41,6 +44,7 @@ abi_deps <- function(pkg, lib.loc = NULL, ignore = "R6"){
   out <- rbind(
     linkingto_deps(path, lib.loc),
     s4_deps(db, pkg, lib.loc),
+    generic_deps(db, pkg, lib.loc),
     deps_table(names(copied) %||% character(), "copied code", unname(vapply(copied, paste, "", collapse = ", ")))
   )
   out <- unique(out)
@@ -134,6 +138,25 @@ own_contains <- function(def, pkg, lib.loc){
     !any(members %in% basic) || any(members %in% others)
   }, TRUE)
   def@contains[keep]
+}
+
+# Generics of other packages that the package defines methods for. Methods for
+# a function that is not a generic in its own package (an implicit generic,
+# e.g. of a function in base) are skipped.
+generic_deps <- function(db, pkg, lib.loc){
+  tables <- method_tables(db)
+  tables <- tables[!tables$package %in% c(pkg, base_packages, "", ".GlobalEnv"), ]
+  keep <- vapply(seq_len(nrow(tables)), function(i){
+    length(provider_generic(tables$package[i], tables$generic[i], lib.loc)) > 0
+  }, TRUE)
+  deps_table(tables$package[keep], "S4 generic", tables$generic[keep])
+}
+
+provider_generic <- function(dep, generic, lib.loc){
+  path <- tryCatch(find.package(dep, lib.loc), error = function(e) NULL)
+  if (is.null(path))
+    return(NULL)
+  generic_defs(load_rdb(path, dep), dep)[[generic]]
 }
 
 provider_class <- function(dep, class, lib.loc){

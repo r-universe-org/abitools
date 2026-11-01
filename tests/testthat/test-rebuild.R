@@ -260,3 +260,48 @@ test_that("class unions from copies of packages that are not installed are ignor
     expect_equal(abi_list("cconspkg")$exports$hash, abi_list("cprovpkg")$exports$hash)
   })
 })
+
+test_that("generics of other packages that a package has methods for are imported", {
+  skip_on_cran()
+  root <- tempfile()
+  lib <- file.path(root, "lib")
+  dir.create(lib, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE))
+
+  install_pkg(make_pkg(root, "provpkg", "1.0",
+                       code = 'setGeneric("foo", function(x, y, ...) standardGeneric("foo"))',
+                       namespace = c("import(methods)", "exportMethods(foo)")), lib)
+  install_pkg(make_pkg(root, "conspkg", "1.0",
+                       code = c('setMethod("foo", "numeric", function(x, y, ...) "method")',
+                                'setGeneric("bar", function(x) standardGeneric("bar"))',
+                                'setMethod("show", "numeric", function(object) NULL)'),
+                       namespace = c("import(methods)", "import(provpkg)", "exportMethods(foo, bar)"),
+                       imports = "provpkg"), lib)
+  with_lib(lib, {
+    expect_equal(abi_list("provpkg")$exports$key, "provpkg::generic:foo")
+    record <- abi_list("conspkg")
+    # Its own generic is exported, methods for generics of base packages are not imported
+    expect_equal(record$exports$key, "conspkg::generic:bar")
+    expect_equal(record$imports$key, "provpkg::generic:foo")
+    expect_equal(abi_deps("conspkg")$type, "S4 generic")
+  })
+
+  # Dropping an argument breaks the methods, so the hash changes
+  install_pkg(make_pkg(root, "provpkg", "1.1",
+                       code = 'setGeneric("foo", function(x, ...) standardGeneric("foo"))',
+                       namespace = c("import(methods)", "exportMethods(foo)")), lib)
+  with_lib(lib, {
+    expect_equal(abi_check(record), data.frame(package = "provpkg", reason = "S4 generic foo changed"))
+  })
+
+  # The generic moves to another package: the methods of conspkg are lost
+  install_pkg(make_pkg(root, "cprovpkg", "1.0",
+                       code = 'setGeneric("foo", function(x, y, ...) standardGeneric("foo"))',
+                       namespace = c("import(methods)", "exportMethods(foo)")), lib)
+  install_pkg(make_pkg(root, "provpkg", "2.0", code = 'setClass("Base", representation(x = "numeric"))',
+                       namespace = c("import(methods)", "import(cprovpkg)", "export(foo)", "exportClasses(Base)"),
+                       imports = "cprovpkg"), lib)
+  with_lib(lib, {
+    expect_equal(abi_check(record), data.frame(package = "provpkg", reason = "S4 generic foo removed"))
+  })
+})

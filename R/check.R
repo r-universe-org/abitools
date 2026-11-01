@@ -43,7 +43,8 @@ abi_check <- function(x, exports = NULL, lib.loc = NULL, flags = NULL){
 key_what <- function(key){
   name <- sub("^[^:]*::", "", key)
   ifelse(endsWith(key, "()"), paste("C function", name),
-  ifelse(grepl("::", key, fixed = TRUE), paste("S4 class", name), "C headers"))
+  ifelse(startsWith(name, "generic:"), paste("S4 generic", sub("^generic:", "", name)),
+  ifelse(grepl("::", key, fixed = TRUE), paste("S4 class", name), "C headers")))
 }
 
 #' @export

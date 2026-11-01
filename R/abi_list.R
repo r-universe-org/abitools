@@ -5,7 +5,7 @@
 #' package was built, in the library that it was built with.
 #'
 #' The **exports** are the parts of the package that dependents may copy at
-#' build time: a hash of each S4 class definition, a hash of the C headers in
+#' build time: a hash of each S4 class definition and S4 generic, a hash of the C headers in
 #' its `include` directory, and a hash of each C function that it registers
 #' with `R_RegisterCCallable()`. The hash of a C function covers its
 #' declaration in the headers, and the definitions of the types that it uses.
@@ -13,7 +13,8 @@
 #' affects dependents.
 #'
 #' The **imports** are the exports of its dependencies that the package copied
-#' when it was built: the classes that it extends, the C functions of `C API`
+#' when it was built: the classes that it extends, the generics that it
+#' defines methods for, the C functions of `C API`
 #' dependencies that it calls, and the headers of `linked library`
 #' dependencies (see [abi_deps()]). Other classes and functions of the
 #' dependency are not included, so a change in those does not trigger a
@@ -33,6 +34,7 @@
 #' [install_flags()] to take these from the log of `R CMD INSTALL`.
 #' @return a list with data frames `exports` and `imports`, both with columns
 #' `key` and `hash`. The key is `<package>::<class>` for an S4 class,
+#' `<package>::generic:<name>` for an S4 generic,
 #' `<package>::<function>()` for a C function, or `<package>/include` for the
 #' C headers. Package names cannot contain `:` or `/`, so the package is
 #' everything before the first `::` or `/`.
@@ -58,12 +60,16 @@ install_flags <- function(log){
 
 abi_exports <- function(pkg, lib.loc = NULL, flags = NULL){
   path <- find.package(pkg, lib.loc)
-  defs <- class_defs(load_rdb(path, pkg), pkg)
+  db <- load_rdb(path, pkg)
+  defs <- class_defs(db, pkg)
+  generics <- generic_defs(db, pkg)
   headers <- header_hash(path)
   functions <- c_function_hashes(pkg, path, lib.loc, flags)
   abi_table(
-    key = c(if (length(headers)) paste0(pkg, "/include"), if (length(defs)) paste0(pkg, "::", names(defs)), names(functions)),
-    hash = c(headers, vapply(defs, class_hash, "", pkg = pkg, lib.loc = lib.loc, USE.NAMES = FALSE), unname(functions))
+    key = c(if (length(headers)) paste0(pkg, "/include"), if (length(defs)) paste0(pkg, "::", names(defs)),
+            if (length(generics)) paste0(pkg, "::generic:", names(generics)), names(functions)),
+    hash = c(headers, vapply(defs, class_hash, "", pkg = pkg, lib.loc = lib.loc, USE.NAMES = FALSE),
+             vapply(generics, generic_hash, "", USE.NAMES = FALSE), unname(functions))
   )
 }
 
@@ -71,14 +77,16 @@ abi_exports <- function(pkg, lib.loc = NULL, flags = NULL){
 # saw their headers when it was built.
 abi_imports <- function(pkg, lib.loc = NULL, flags = NULL){
   path <- find.package(pkg, lib.loc)
-  deps <- rbind(linkingto_deps(path, lib.loc), s4_deps(load_rdb(path, pkg), pkg, lib.loc))
+  db <- load_rdb(path, pkg)
+  deps <- rbind(linkingto_deps(path, lib.loc), s4_deps(db, pkg, lib.loc), generic_deps(db, pkg, lib.loc))
   deps <- deps[deps$type != "headers", ]
   strings <- NULL
   out <- abi_table()
   for (dep in unique(deps$package)) {
     rows <- deps[deps$package == dep, ]
     exports <- abi_exports(dep, lib.loc, flags)
-    wanted <- paste0(dep, "::", rows$detail[rows$type == "S4 class"])
+    wanted <- c(paste0(dep, "::", rows$detail[rows$type == "S4 class"]),
+                paste0(dep, "::generic:", rows$detail[rows$type == "S4 generic"]))
     if ("C API" %in% rows$type) {
       # The C functions of the dependency that the package calls by name
       strings <- strings %||% binary_strings(shared_objects(path))
@@ -118,6 +126,15 @@ class_hash <- function(def, pkg = def@package, lib.loc = NULL){
   }, "")
   hash_text(c(def@className, paste("virtual:", def@virtual), sort(slots, method = "radix"),
               sort(fields, method = "radix"), sort(supers, method = "radix")))
+}
+
+# Methods of other packages break if the generic drops one of the arguments
+# that their methods were matched to when they were built. Adding arguments,
+# or changing the arguments to dispatch on, does not break them, but these are
+# included as well.
+generic_hash <- function(def){
+  hash_text(c(def@generic, paste("arguments:", paste(names(formals(def)), collapse = ", ")),
+              paste("signature:", paste(def@signature, collapse = ", "))))
 }
 
 header_hash <- function(path){
