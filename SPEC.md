@@ -73,8 +73,11 @@ package, such as `list`): the direct members of the union (in the definition
 from its own package) include one of the basic superclasses of the class, but
 not the class itself or any of its other superclasses. R adds these unions,
 e.g. `NULL_OR_list` from SparseArray to every class that contains `list`, if
-their package happens to be loaded when the package is installed. This also
-applies to the imports (section 6).
+their package happens to be loaded when the package is installed. For a class
+that extends a basic class, unions from packages that are not installed are left
+out too: R also gets these from copies in the lazy-load database of a loaded
+dependency (e.g. phyloseq has a copy of `NULL_OR_list`). This also applies to
+the imports (section 6).
 
 ## 4. C functions
 
