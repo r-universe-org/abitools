@@ -3,7 +3,7 @@ Type: Package
 Title: Detect When Installed R Packages Need to be Rebuilt
 Version: 0.1.0
 Authors@R: person("Jeroen", "Ooms", role = c("aut", "cre"),
-    email = "jeroen.ooms.ctr@posit.co")
+    email = "jeroenooms@gmail.com")
 Description: An installed R package may contain state copied from its
     dependencies at build time: compiled calls into the C API of a 'LinkingTo'
     package, S4 class definitions that extend classes from other packages, or
