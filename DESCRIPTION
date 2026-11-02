@@ -13,6 +13,8 @@ Description: An installed R package may contain state copied from its
     package repositories can rebuild exactly the packages that are affected
     by a change, rather than relying on version numbers.
 License: MIT + file LICENSE
+URL: https://github.com/r-universe-org/abitools
+BugReports: https://github.com/r-universe-org/abitools/issues
 Encoding: UTF-8
 SystemRequirements: libclang (deb: libclang-dev, rpm: clang-devel, brew: llvm)
 Depends:
@@ -22,7 +24,10 @@ Imports:
     tools
 Suggests:
     jsonlite,
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0

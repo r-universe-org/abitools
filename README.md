@@ -176,7 +176,9 @@ skips only the declarations that were affected. Set
   update to CHOLMOD 5) the size of the `cholmod_common` struct.
 - **Bioconductor**, release to devel: the only change in the S4 classes of
   S4Vectors, IRanges, BiocGenerics, S4Arrays, and DelayedArray was the removal
-  of two classes from S4Vectors that no other package extends.
+  of two classes from S4Vectors that no other package extends. The vignette
+  [bioc-release-devel](vignettes/bioc-release-devel.Rmd) compares the ABI of
+  all packages in Bioconductor release and devel.
 - **Stability:** libclang 17 to 22 give identical signatures for all 1290
   registered C functions of 18 packages. Linux and macOS give identical
   signatures, except for C++ functions with types from the C++ standard

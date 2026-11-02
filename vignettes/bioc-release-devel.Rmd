@@ -1,0 +1,205 @@
+---
+title: "Binary compatibility between Bioconductor release and devel"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Binary compatibility between Bioconductor release and devel}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+params:
+  old: bioc-release
+  new: bioc
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r data}
+# All packages in a universe, with the ABI record that r-universe stores for each
+# build (computed by abitools): the S4 classes, S4 generics, C functions and
+# headers that the package exports, and the ones it imports from other packages, each with a hash.
+read_universe <- function(universe){
+  url <- sprintf("https://%s.r-universe.dev/api/packages?fields=Version,_abi&limit=99999", universe)
+  pkgs <- jsonlite::fromJSON(url, simplifyVector = FALSE)
+  names(pkgs) <- vapply(pkgs, function(x) x$Package, "")
+  pkgs
+}
+
+abi_table <- function(pkgs, field){
+  rows <- lapply(names(pkgs), function(p){
+    entries <- pkgs[[p]][["_abi"]][[field]]
+    if (length(entries))
+      data.frame(package = p, key = vapply(entries, function(x) x$key, ""),
+                 hash = vapply(entries, function(x) x$hash, ""))
+  })
+  do.call(rbind, rows)
+}
+
+# Keys look like "pkg::Class", "pkg::generic:name", "pkg::fun()" or "pkg/include"
+abi_type <- function(key){
+  ifelse(grepl("/", key), "C header", ifelse(grepl("\\(\\)$", key), "C function",
+  ifelse(grepl("::generic:", key, fixed = TRUE), "S4 generic", "S4 class")))
+}
+types <- c("S4 class", "S4 generic", "C function", "C header")
+
+old <- read_universe(params$old)
+new <- read_universe(params$new)
+has_abi <- function(pkgs) names(pkgs)[lengths(lapply(pkgs, `[[`, "_abi")) > 0]
+common <- intersect(has_abi(old), has_abi(new))
+
+exports <- merge(abi_table(old[common], "exports"), abi_table(new[common], "exports"),
+                 by = c("package", "key"), all = TRUE, suffixes = c(".old", ".new"))
+exports$change <- ifelse(is.na(exports$hash.new), "removed",
+                  ifelse(is.na(exports$hash.old), "added",
+                  ifelse(exports$hash.old != exports$hash.new, "changed", "unchanged")))
+exports$type <- abi_type(exports$key)
+
+# A removed generic may have moved to another package in devel (e.g. to
+# BiocGenerics): a package that exports a generic with the same name in devel,
+# but not in release. Other packages may have unrelated generics with that name.
+generic_keys <- function(pkgs) grep("::generic:", abi_table(pkgs[has_abi(pkgs)], "exports")$key, value = TRUE, fixed = TRUE)
+new_generics <- setdiff(generic_keys(new), generic_keys(old))
+moved_to <- function(key){
+  if (!grepl("::generic:", key, fixed = TRUE)) return("")
+  name <- sub(".*::generic:", "", key)
+  to <- sub("::.*", "", new_generics[sub(".*::generic:", "", new_generics) == name])
+  paste(setdiff(to, sub("::.*", "", key)), collapse = ", ")
+}
+exports$moved <- ""
+removed <- exports$change == "removed"
+exports$moved[removed] <- vapply(exports$key[removed], moved_to, "")
+exports$change[removed & nzchar(exports$moved)] <- "moved"
+
+# Release packages that import each export: their binaries were built against the
+# release version of the provider.
+imports <- abi_table(old, "imports")
+dependents_of <- function(keys) sort(unique(imports$package[imports$key %in% keys]))
+
+broken <- exports[exports$change %in% c("changed", "moved", "removed"), ]
+broken$dependents <- vapply(broken$key, function(k) paste(dependents_of(k), collapse = ", "), "")
+breaking <- broken[nzchar(broken$dependents), ]
+
+exporters <- unique(exports$package[exports$change != "added"])
+providers <- unique(exports$package[exports$change != "added" & exports$key %in% imports$key])
+changed_pkgs <- unique(broken$package)
+breaking_pkgs <- unique(breaking$package)
+affected <- dependents_of(breaking$key)
+
+# Packages with an ABI record in only one of the two universes can't be compared.
+# This only matters if other packages import their exports.
+one_sided <- setdiff(union(has_abi(old), has_abi(new)), common)
+one_sided <- intersect(one_sided, intersect(names(old), names(new)))
+one_sided_exports <- c(abi_table(old[intersect(one_sided, has_abi(old))], "exports")$key,
+                       abi_table(new[intersect(one_sided, has_abi(new))], "exports")$key)
+all_imports <- c(imports$key, abi_table(new, "imports")$key)
+hidden <- unique(sub("(::|/).*", "", intersect(one_sided_exports, all_imports)))
+
+fmt <- function(x) format(x, big.mark = ",")
+plural <- function(n, word) sprintf("%s %s%s", fmt(n), word, if (n == 1) "" else "s")
+```
+
+## Summary
+
+At each Bioconductor release, every package gets a version bump, so that all
+binaries are rebuilt. This is intended to protect against packages breaking when
+a package they depend on changes its binary interface (ABI), but it rebuilds all 
+packages, including the many that are not affected. We compared the ABI of every package
+in Bioconductor release with the same package in devel, to see how many of
+these changes actually affect other packages.
+
+- Bioconductor devel has `r fmt(length(new))` packages. Only
+  **`r length(providers)`** of them export an interface (S4 class, S4 generic,
+  C function or C header) that another package depends on in its binary.
+- `r plural(length(changed_pkgs), "package")` changed, moved or removed part of their ABI between
+  release and devel. Most of these changes are to interfaces that no other
+  package uses.
+- Changes in **`r plural(length(breaking_pkgs), "package")`** affect other
+  packages: **`r plural(length(affected), "dependent")`** in total
+  (`r paste(affected, collapse = ", ")`).
+
+So instead of rebuilding all `r fmt(length(new))` packages, only
+`r plural(length(affected), "package")` needed attention. These packages are found
+automatically, by comparing the hashes that each binary imports with the current
+exports of its dependencies.
+
+## Packages that changed their ABI
+
+```{r changed}
+counts <- function(x) table(factor(x, levels = c("changed", "moved", "removed", "added")))
+summary_table <- do.call(rbind, lapply(changed_pkgs, function(p){
+  n <- counts(exports$change[exports$package == p])
+  data.frame(Package = p,
+             Version = sprintf("%s → %s", old[[p]]$Version, new[[p]]$Version),
+             Changed = n[["changed"]], Moved = n[["moved"]], Removed = n[["removed"]], Added = n[["added"]],
+             `Affected dependents` = length(dependents_of(broken$key[broken$package == p])),
+             check.names = FALSE)
+}))
+summary_table <- summary_table[order(-summary_table$`Affected dependents`, summary_table$Package), ]
+knitr::kable(summary_table, row.names = FALSE)
+```
+
+Changed, moved and removed interfaces by type:
+
+```{r types}
+by_type <- table(factor(broken$type, levels = types),
+                 factor(broken$change, levels = c("changed", "moved", "removed")))
+knitr::kable(as.data.frame.matrix(by_type))
+```
+
+## Changes that affect other packages
+
+```{r breaking, results = "asis"}
+if (nrow(breaking)) {
+  knitr::kable(data.frame(Provider = breaking$package, Interface = breaking$key,
+                          Type = breaking$type,
+                          Change = ifelse(breaking$change == "moved", paste("moved to", breaking$moved), breaking$change),
+                          Dependents = breaking$dependents), row.names = FALSE)
+} else {
+  cat("None.")
+}
+```
+
+When an interface **changed**, rebuilding the dependents fixes them. Not every
+change breaks the old binaries: for example, methods keep working when a generic
+gets extra arguments. But the hashes do not tell which changes are harmless, and
+a rebuild is cheap. When a
+generic **moved** to another package, a rebuild fixes dependents that import it
+through a package that still provides it (e.g. `import(DelayedArray)`), but not
+dependents that import it by name from the old package (`importFrom()`). When an
+interface was **removed**, a rebuild can't help: the dependent needs a code
+change, which a version bump doesn't provide either.
+
+## Notes
+
+What the changes above mean in practice, checked by hand (November 2026):
+
+| Change | Dependents | Impact |
+|:---|:---|:---|
+| Biostrings: `MultipleAlignment` classes moved to the new MultipleAlignment package | msa | Real: needed a code change |
+| `detail` generic moved from Biostrings to BiocGenerics | ShortRead, HiTC | Real: ShortRead needed a code change (`importFrom(Biostrings, detail)`); HiTC was removed from devel |
+| `scale` generic moved from DelayedArray to BiocGenerics | SCArray | Real: a rebuild fixes it |
+| `BiocGenerics::table` dispatches on `x` instead of `...` | S4Vectors, IRanges, DelayedArray, R453Plus1Toolbox | Probably real (old methods tables): a rebuild fixes it |
+| `enrichplot::upsetplot` gained arguments | ChIPseeker, epiSeeker | Probably harmless: extra arguments don't break methods |
+| preprocessCore: `plmrc_wfit()` and `plmrr_wfit()` | affy, affyPLM, oligo | Not a real change: a typo in the declarations in `plmr.h` was fixed, which changed the hash |
+
+## Method
+
+- Data: the ABI records that r-universe stores for each package build in
+  [`r params$old`](https://`r params$old`.r-universe.dev) and
+  [`r params$new`](https://`r params$new`.r-universe.dev), computed with
+  [abitools](https://github.com/r-universe-org/abitools).
+- An S4 class's hash covers its slots, superclasses and reference class fields. A C
+  function's hash covers its signature (argument and return types), and a header's
+  hash covers the contents of the package's `include` directory. An S4 generic's
+  hash covers its arguments and the arguments it dispatches on.
+- A package imports an interface when it extends an S4 class of another package,
+  defines methods for a generic of another package, or links to its C API
+  (`LinkingTo`). The dependents of a change are the release
+  packages whose binaries import the interface.
+- Coverage: a package only has an ABI record if it exports or imports any of
+  these interfaces; packages without a record have no binary ties to other
+  packages. `r length(common)` packages have a record in both release and devel,
+  and these are compared.
+  `r length(one_sided)` packages have a record in only one of the two;
+  `r if (length(hidden)) paste("the exports of", paste(hidden, collapse = ", "), "are imported by other packages, so changes there are not covered") else "no other package imports their exports, so this does not affect the results"`.
