@@ -1,6 +1,12 @@
 # abitools
 
-> Fingerprint the ABI of installed R packages
+> Fingerprint the ABI of installed R packages in order to detect when dependents need to be rebuilt
+
+The purpose is to keep track of ABI imports and exports of any package using S4 or
+C/C++ such that we can detect (breaking) ABI changes and determine which reverse 
+dependencies should be rebuilt.
+
+## Introduction
 
 A binary R package can depend on the binary interface (ABI) of its
 dependencies in three ways:
