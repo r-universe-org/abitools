@@ -9,7 +9,7 @@ c_function_hashes <- function(pkg, path, lib.loc = NULL, flags = NULL){
   sigs <- clang_signatures(pkg, path, names, lib.loc, flags)
   found <- !is.na(sigs)
   hashes <- vapply(sigs[found], hash_text, "", USE.NAMES = FALSE)
-  names(hashes) <- paste0(pkg, "::", names[found], "()")
+  names(hashes) <- paste0(pkg, "::", names[found], "()", recycle0 = TRUE)
   hashes
 }
 
